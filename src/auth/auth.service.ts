@@ -20,6 +20,13 @@ interface JwtPayload {
   tokenVersion: number;
 }
 
+interface TokenUser {
+  id: number;
+  email: string;
+  role: string;
+  tokenVersion: number;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -30,21 +37,27 @@ export class AuthService {
   async register(registerDto: RegisterDto) {
     const { name, email, password } = registerDto;
 
-    const existingUser = await this.usersService.findByEmail(email);
+    const existingUser =
+      await this.usersService.findByEmail(email);
 
     if (existingUser) {
-      throw new BadRequestException('User already exists');
+      throw new BadRequestException(
+        'User already exists',
+      );
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword =
+      await bcrypt.hash(password, 12);
 
-    const user = await this.usersService.create({
-      name,
-      email,
-      password: hashedPassword,
-    });
+    const user =
+      await this.usersService.create({
+        name,
+        email,
+        password: hashedPassword,
+      });
 
     return {
+      success: true,
       message: 'User registered successfully',
       user: {
         id: user.id,
@@ -57,26 +70,49 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
-    const user = await this.usersService.findByEmail(email);
+    const user =
+      await this.usersService.findByEmail(email);
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(
+        'Invalid credentials',
+      );
     }
 
-    if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+    if (!user.isActive) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated.',
+      );
+    }
+
+    if (
+      user.lockedUntil &&
+      new Date(user.lockedUntil) > new Date()
+    ) {
       throw new HttpException(
         'Account temporarily locked. Try again later.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch =
+      await bcrypt.compare(
+        password,
+        user.password,
+      );
 
     if (!isMatch) {
-      const updated = await this.usersService.incrementFailedAttempts(user.id);
+      const updated =
+        await this.usersService.incrementFailedAttempts(
+          user.id,
+        );
 
-      if (updated.failedLoginAttempts >= 5) {
-        await this.usersService.lockAccount(user.id);
+      if (
+        updated.failedLoginAttempts >= 5
+      ) {
+        await this.usersService.lockAccount(
+          user.id,
+        );
 
         throw new HttpException(
           'Account locked due to too many failed attempts',
@@ -85,21 +121,35 @@ export class AuthService {
       }
 
       throw new UnauthorizedException(
-        `Invalid credentials. ${5 - updated.failedLoginAttempts} attempts left.`,
+        `Invalid credentials. ${
+          5 - updated.failedLoginAttempts
+        } attempts left.`,
       );
     }
 
-    await this.usersService.resetFailedAttempts(user.id);
+    await this.usersService.resetFailedAttempts(
+      user.id,
+    );
 
-    const freshUser = await this.usersService.findById(user.id);
+    const freshUser =
+      await this.usersService.findById(
+        user.id,
+      );
 
     if (!freshUser) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException(
+        'User not found',
+      );
     }
 
-    const tokens = this.generateTokens(freshUser);
+    const tokens =
+      this.generateTokens(freshUser);
 
-    const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
+    const hashedRefreshToken =
+      await bcrypt.hash(
+        tokens.refreshToken,
+        10,
+      );
 
     await this.usersService.updateRefreshToken(
       freshUser.id,
@@ -107,6 +157,7 @@ export class AuthService {
     );
 
     return {
+      success: true,
       message: 'Login successful',
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
@@ -119,33 +170,50 @@ export class AuthService {
     };
   }
 
-  async refreshToken(refreshToken: string) {
+  async refreshToken(
+    refreshToken: string,
+  ) {
     if (!refreshToken) {
-      throw new UnauthorizedException('No refresh token provided');
+      throw new UnauthorizedException(
+        'No refresh token provided',
+      );
     }
 
     let payload: JwtPayload;
 
     try {
-      payload = this.jwtService.verify<JwtPayload>(refreshToken);
+      payload =
+        this.jwtService.verify<JwtPayload>(
+          refreshToken,
+        );
     } catch {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException(
+        'Invalid refresh token',
+      );
     }
 
-    const user = await this.usersService.findById(payload.sub);
+    const user =
+      await this.usersService.findById(
+        payload.sub,
+      );
 
     if (!user) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException(
+        'User not found',
+      );
     }
 
     if (!user.refreshToken) {
-      throw new UnauthorizedException('Refresh token not found');
+      throw new UnauthorizedException(
+        'Refresh token not found',
+      );
     }
 
-    const isValid = await bcrypt.compare(
-      refreshToken,
-      user.refreshToken,
-    );
+    const isValid =
+      await bcrypt.compare(
+        refreshToken,
+        user.refreshToken,
+      );
 
     if (!isValid) {
       throw new UnauthorizedException(
@@ -153,19 +221,23 @@ export class AuthService {
       );
     }
 
-    // Immediate logout support
-    if (payload.tokenVersion !== user.tokenVersion) {
+    if (
+      payload.tokenVersion !==
+      user.tokenVersion
+    ) {
       throw new UnauthorizedException(
         'Refresh token has been revoked',
       );
     }
 
-    const tokens = this.generateTokens(user);
+    const tokens =
+      this.generateTokens(user);
 
-    const hashedRefreshToken = await bcrypt.hash(
-      tokens.refreshToken,
-      10,
-    );
+    const hashedRefreshToken =
+      await bcrypt.hash(
+        tokens.refreshToken,
+        10,
+      );
 
     await this.usersService.updateRefreshToken(
       user.id,
@@ -173,7 +245,9 @@ export class AuthService {
     );
 
     return {
-      message: 'Token refreshed successfully',
+      success: true,
+      message:
+        'Token refreshed successfully',
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     };
@@ -181,17 +255,22 @@ export class AuthService {
 
   async logout(userId: number) {
     if (!userId) {
-      throw new UnauthorizedException('Invalid user id');
+      throw new UnauthorizedException(
+        'Invalid user id',
+      );
     }
 
     await this.usersService.logout(userId);
 
     return {
+      success: true,
       message: 'Logged out successfully',
     };
   }
 
-  private generateTokens(user: any) {
+  public generateTokens(
+    user: TokenUser,
+  ) {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -200,13 +279,15 @@ export class AuthService {
     };
 
     return {
-      accessToken: this.jwtService.sign(payload, {
-        expiresIn: '15m',
-      }),
+      accessToken:
+        this.jwtService.sign(payload, {
+          expiresIn: '15m',
+        }),
 
-      refreshToken: this.jwtService.sign(payload, {
-        expiresIn: '7d',
-      }),
+      refreshToken:
+        this.jwtService.sign(payload, {
+          expiresIn: '7d',
+        }),
     };
   }
 }

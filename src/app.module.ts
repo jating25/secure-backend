@@ -1,8 +1,15 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
 
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import {
+  APP_GUARD,
+  APP_INTERCEPTOR,
+} from '@nestjs/core';
+
+import {
+  ThrottlerModule,
+  ThrottlerGuard,
+} from '@nestjs/throttler';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -11,6 +18,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { LogsModule } from './logs/logs.module';
+import { AdminModule } from './admin/admin.module';
 
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -32,6 +40,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     LogsModule,
     AuthModule,
     UsersModule,
+    AdminModule,
   ],
 
   controllers: [AppController],
@@ -39,8 +48,15 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
   providers: [
     AppService,
 
-    LoggingInterceptor,
-    TransformInterceptor,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: LoggingInterceptor,
+    },
+
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TransformInterceptor,
+    },
 
     {
       provide: APP_GUARD,
