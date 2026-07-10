@@ -4,14 +4,21 @@ import { PrismaModule } from '../prisma/prisma.module';
 
 import { LogsController } from './logs.controller';
 import { LogsService } from './logs.service';
+import { AuditService } from './audit.service';
 
 @Module({
   imports: [PrismaModule],
 
   controllers: [LogsController],
 
-  providers: [LogsService],
+  providers: [
+    LogsService,
+    AuditService,
+  ],
 
-  exports: [LogsService],
+  exports: [
+    LogsService,
+    AuditService,
+  ],
 })
 export class LogsModule {}

@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { AuditService } from '../logs/audit.service';
 
 interface JwtPayload {
   sub: number;
@@ -32,6 +33,8 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly auditService: AuditService,
+
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -55,6 +58,14 @@ export class AuthService {
         email,
         password: hashedPassword,
       });
+
+      await this.auditService.log({
+  userId: user.id,
+  action: 'REGISTER',
+  endpoint: '/auth/register',
+  method: 'POST',
+  statusCode: 201,
+});
 
     return {
       success: true,
@@ -156,6 +167,14 @@ export class AuthService {
       hashedRefreshToken,
     );
 
+    await this.auditService.log({
+  userId: freshUser.id,
+  action: 'LOGIN',
+  endpoint: '/auth/login',
+  method: 'POST',
+  statusCode: 200,
+});
+
     return {
       success: true,
       message: 'Login successful',
@@ -244,6 +263,14 @@ export class AuthService {
       hashedRefreshToken,
     );
 
+    await this.auditService.log({
+  userId: user.id,
+  action: 'REFRESH_TOKEN',
+  endpoint: '/auth/refresh',
+  method: 'POST',
+  statusCode: 200,
+});
+
     return {
       success: true,
       message:
@@ -261,6 +288,14 @@ export class AuthService {
     }
 
     await this.usersService.logout(userId);
+
+    await this.auditService.log({
+  userId,
+  action: 'LOGOUT',
+  endpoint: '/auth/logout',
+  method: 'POST',
+  statusCode: 200,
+});
 
     return {
       success: true,

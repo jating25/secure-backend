@@ -7,18 +7,19 @@ import {
 } from '@nestjs/core';
 
 import {
-  ThrottlerModule,
   ThrottlerGuard,
+  ThrottlerModule,
 } from '@nestjs/throttler';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 import { PrismaModule } from './prisma/prisma.module';
-import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
-import { LogsModule } from './logs/logs.module';
+import { AuthModule } from './auth/auth.module';
 import { AdminModule } from './admin/admin.module';
+import { LogsModule } from './logs/logs.module';
+import { RequestsModule } from './requests/requests.module';
 
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -37,13 +38,17 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     ]),
 
     PrismaModule,
-    LogsModule,
-    AuthModule,
+
     UsersModule,
+    AuthModule,
     AdminModule,
+    LogsModule,
+    RequestsModule,
   ],
 
-  controllers: [AppController],
+  controllers: [
+    AppController,
+  ],
 
   providers: [
     AppService,
