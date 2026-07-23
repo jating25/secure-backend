@@ -1,16 +1,19 @@
 import {
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class LogsService {
+  private readonly logger =
+    new Logger(LogsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
   ) {}
-
 
   async create(data: {
     userId?: number;
@@ -20,13 +23,34 @@ export class LogsService {
     statusCode: number;
     ip?: string;
     userAgent?: string;
-  }) {
-    return this.prisma.log.create({
-      data,
+  }): Promise<{ success: boolean }> {
+    return new Promise((resolve) => {
+      setImmediate(() => {
+        this.prisma.log
+          .create({
+            data,
+          })
+          .then(() => {
+            resolve({
+              success: true,
+            });
+          })
+          .catch((error) => {
+            this.logger.error(
+              'Log creation failed',
+              error instanceof Error
+                ? error.stack
+                : String(error),
+            );
+
+            resolve({
+              success: false,
+            });
+          });
+      });
     });
   }
 
-  
   async getLogs(
     page = 1,
     limit = 20,
@@ -63,30 +87,69 @@ export class LogsService {
     }
 
     if (method) {
-      where.method = method.toUpperCase();
+      where.method =
+        method.toUpperCase();
     }
 
     if (statusCode) {
-      where.statusCode = statusCode;
+      where.statusCode =
+        statusCode;
     }
 
     if (from || to) {
       where.createdAt = {};
 
       if (from) {
-        where.createdAt.gte = new Date(from);
+        where.createdAt.gte =
+          new Date(from);
       }
 
       if (to) {
-        where.createdAt.lte = new Date(to);
+        where.createdAt.lte =
+          new Date(to);
       }
     }
 
-    const [logs, total] = await Promise.all([
-      this.prisma.log.findMany({
-        skip,
-        take: limit,
-        where,
+    const [logs, total] =
+      await Promise.all([
+        this.prisma.log.findMany({
+          skip,
+          take: limit,
+          where,
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+
+        this.prisma.log.count({
+          where,
+        }),
+      ]);
+
+    return {
+      page,
+      limit,
+      total,
+      logs,
+    };
+  }
+
+  async getLogById(id: number) {
+    const log =
+      await this.prisma.log.findUnique({
+        where: {
+          id,
+        },
         include: {
           user: {
             select: {
@@ -97,41 +160,7 @@ export class LogsService {
             },
           },
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      }),
-
-      this.prisma.log.count({
-        where,
-      }),
-    ]);
-
-    return {
-      page,
-      limit,
-      total,
-      logs,
-    };
-  }
-
-  
-  async getLogById(id: number) {
-    const log = await this.prisma.log.findUnique({
-      where: {
-        id,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
-      },
-    });
+      });
 
     if (!log) {
       throw new NotFoundException(
@@ -142,33 +171,33 @@ export class LogsService {
     return log;
   }
 
-  
-
   async getLogsByUser(
     userId: number,
     page = 1,
     limit = 20,
   ) {
-    const skip = (page - 1) * limit;
+    const skip =
+      (page - 1) * limit;
 
-    const [logs, total] = await Promise.all([
-      this.prisma.log.findMany({
-        where: {
-          userId,
-        },
-        skip,
-        take: limit,
-        orderBy: {
-          createdAt: 'desc',
-        },
-      }),
+    const [logs, total] =
+      await Promise.all([
+        this.prisma.log.findMany({
+          where: {
+            userId,
+          },
+          skip,
+          take: limit,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
 
-      this.prisma.log.count({
-        where: {
-          userId,
-        },
-      }),
-    ]);
+        this.prisma.log.count({
+          where: {
+            userId,
+          },
+        }),
+      ]);
 
     return {
       page,
@@ -178,10 +207,9 @@ export class LogsService {
     };
   }
 
-  
-
   async deleteAllLogs() {
-    const result = await this.prisma.log.deleteMany();
+    const result =
+      await this.prisma.log.deleteMany();
 
     return {
       deleted: result.count,

@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 
 import { JwtService } from '@nestjs/jwt';
@@ -14,6 +15,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuditService } from '../logs/audit.service';
 
+
 interface JwtPayload {
   sub: number;
   email: string;
@@ -21,51 +23,77 @@ interface JwtPayload {
   tokenVersion: number;
 }
 
-interface TokenUser {
+
+export interface TokenUser {
   id: number;
   email: string;
   role: string;
   tokenVersion: number;
 }
 
+
 @Injectable()
 export class AuthService {
+
+  private readonly logger =
+    new Logger(AuthService.name);
+
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly auditService: AuditService,
-
   ) {}
 
-  async register(registerDto: RegisterDto) {
-    const { name, email, password } = registerDto;
 
-    const existingUser =
-      await this.usersService.findByEmail(email);
 
-    if (existingUser) {
+  async register(
+    dto: RegisterDto,
+  ) {
+
+    const {
+      name,
+      email,
+      password,
+    } = dto;
+
+
+    const exists =
+      await this.usersService.findByEmail(
+        email,
+      );
+
+
+    if (exists) {
       throw new BadRequestException(
         'User already exists',
       );
     }
 
-    const hashedPassword =
-      await bcrypt.hash(password, 12);
+
+    const hashed =
+      await bcrypt.hash(
+        password,
+        12,
+      );
+
 
     const user =
       await this.usersService.create({
         name,
         email,
-        password: hashedPassword,
+        password: hashed,
       });
 
-      await this.auditService.log({
-  userId: user.id,
-  action: 'REGISTER',
-  endpoint: '/auth/register',
-  method: 'POST',
-  statusCode: 201,
-});
+
+    await this.auditService.log({
+      userId: user.id,
+      action: 'REGISTER',
+      endpoint: '/auth/register',
+      method: 'POST',
+      statusCode: 201,
+    });
+
 
     return {
       success: true,
@@ -76,253 +104,428 @@ export class AuthService {
         email: user.email,
       },
     };
+
   }
 
-  async login(loginDto: LoginDto) {
-    const { email, password } = loginDto;
 
-    const user =
-      await this.usersService.findByEmail(email);
 
-    if (!user) {
-      throw new UnauthorizedException(
-        'Invalid credentials',
-      );
-    }
 
-    if (!user.isActive) {
-      throw new UnauthorizedException(
-        'Your account has been deactivated.',
-      );
-    }
+  async login(
+    dto: LoginDto,
+  ) {
 
-    if (
-      user.lockedUntil &&
-      new Date(user.lockedUntil) > new Date()
-    ) {
-      throw new HttpException(
-        'Account temporarily locked. Try again later.',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
+    try {
 
-    const isMatch =
-      await bcrypt.compare(
+      const {
+        email,
         password,
-        user.password,
-      );
+      } = dto;
 
-    if (!isMatch) {
-      const updated =
-        await this.usersService.incrementFailedAttempts(
-          user.id,
+
+      const user =
+        await this.usersService.findByEmail(
+          email,
         );
 
-      if (
-        updated.failedLoginAttempts >= 5
-      ) {
-        await this.usersService.lockAccount(
-          user.id,
-        );
 
-        throw new HttpException(
-          'Account locked due to too many failed attempts',
-          HttpStatus.TOO_MANY_REQUESTS,
+      if (!user) {
+        throw new UnauthorizedException(
+          'Invalid credentials',
         );
       }
 
-      throw new UnauthorizedException(
-        `Invalid credentials. ${
-          5 - updated.failedLoginAttempts
-        } attempts left.`,
-      );
-    }
 
-    await this.usersService.resetFailedAttempts(
-      user.id,
-    );
+      if (!user.isActive) {
+        throw new UnauthorizedException(
+          'Account disabled',
+        );
+      }
 
-    const freshUser =
-      await this.usersService.findById(
+
+      if (
+        user.lockedUntil &&
+        user.lockedUntil > new Date()
+      ) {
+
+        throw new HttpException(
+          'Account temporarily locked',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+
+      }
+
+
+
+      const match =
+        await bcrypt.compare(
+          password,
+          user.password,
+        );
+
+
+      if (!match) {
+
+        const updated =
+          await this.usersService
+          .incrementFailedAttempts(
+            user.id,
+          );
+
+
+        if (
+          updated.failedLoginAttempts >= 5
+        ) {
+
+          await this.usersService.lockAccount(
+            user.id,
+          );
+
+
+          throw new HttpException(
+            'Account locked',
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+
+        }
+
+
+        throw new UnauthorizedException(
+          'Invalid credentials',
+        );
+
+      }
+
+
+
+      await this.usersService
+      .resetFailedAttempts(
         user.id,
       );
 
-    if (!freshUser) {
-      throw new UnauthorizedException(
-        'User not found',
+
+
+      const tokens =
+        this.generateTokens({
+          id: user.id,
+          email: user.email,
+          role: String(user.role),
+          tokenVersion:
+            user.tokenVersion ?? 0,
+        });
+
+
+
+      const refreshHash =
+        await bcrypt.hash(
+          tokens.refreshToken,
+          8,
+        );
+
+
+
+      await this.usersService
+      .updateRefreshToken(
+        user.id,
+        refreshHash,
       );
+
+
+
+      void this.auditService.log({
+        userId: user.id,
+        action: 'LOGIN',
+        endpoint: '/auth/login',
+        method: 'POST',
+        statusCode: 200,
+      });
+
+
+
+      return {
+
+        success: true,
+
+        message:
+          'Login successful',
+
+        accessToken:
+          tokens.accessToken,
+
+        refreshToken:
+          tokens.refreshToken,
+
+
+        user: {
+
+          id: user.id,
+
+          name: user.name,
+
+          email: user.email,
+
+          role: user.role,
+
+        },
+
+      };
+
+
+    } catch(error) {
+
+
+      this.logger.error(
+        'Login failed',
+        error instanceof Error
+          ? error.stack
+          : String(error),
+      );
+
+
+      throw error;
+
     }
 
-    const tokens =
-      this.generateTokens(freshUser);
-
-    const hashedRefreshToken =
-      await bcrypt.hash(
-        tokens.refreshToken,
-        10,
-      );
-
-    await this.usersService.updateRefreshToken(
-      freshUser.id,
-      hashedRefreshToken,
-    );
-
-    await this.auditService.log({
-  userId: freshUser.id,
-  action: 'LOGIN',
-  endpoint: '/auth/login',
-  method: 'POST',
-  statusCode: 200,
-});
-
-    return {
-      success: true,
-      message: 'Login successful',
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      user: {
-        id: freshUser.id,
-        name: freshUser.name,
-        email: freshUser.email,
-        role: freshUser.role,
-      },
-    };
   }
+
+
+
 
   async refreshToken(
     refreshToken: string,
   ) {
+
+
     if (!refreshToken) {
+
       throw new UnauthorizedException(
-        'No refresh token provided',
+        'Refresh token missing',
       );
+
     }
+
+
 
     let payload: JwtPayload;
 
+
     try {
+
       payload =
         this.jwtService.verify<JwtPayload>(
           refreshToken,
+          {
+            secret:
+              process.env.JWT_REFRESH_SECRET ||
+              process.env.JWT_SECRET,
+          },
         );
+
+
     } catch {
+
       throw new UnauthorizedException(
         'Invalid refresh token',
       );
+
     }
+
+
+
 
     const user =
       await this.usersService.findById(
         payload.sub,
       );
 
+
     if (!user) {
+
       throw new UnauthorizedException(
         'User not found',
       );
+
     }
+
+
+
 
     if (!user.refreshToken) {
+
       throw new UnauthorizedException(
-        'Refresh token not found',
+        'Refresh token revoked',
       );
+
     }
 
-    const isValid =
+
+
+
+    const valid =
       await bcrypt.compare(
         refreshToken,
         user.refreshToken,
       );
 
-    if (!isValid) {
+
+    if (!valid) {
+
       throw new UnauthorizedException(
-        'Refresh token expired or reused',
+        'Invalid refresh token',
       );
+
     }
 
-    if (
-      payload.tokenVersion !==
-      user.tokenVersion
-    ) {
-      throw new UnauthorizedException(
-        'Refresh token has been revoked',
-      );
-    }
+
 
     const tokens =
-      this.generateTokens(user);
+      this.generateTokens({
 
-    const hashedRefreshToken =
+        id: user.id,
+
+        email: user.email,
+
+        role: String(user.role),
+
+        tokenVersion:
+          user.tokenVersion ?? 0,
+
+      });
+
+
+
+    await this.usersService
+    .updateRefreshToken(
+      user.id,
       await bcrypt.hash(
         tokens.refreshToken,
         10,
-      );
-
-    await this.usersService.updateRefreshToken(
-      user.id,
-      hashedRefreshToken,
+      ),
     );
 
-    await this.auditService.log({
-  userId: user.id,
-  action: 'REFRESH_TOKEN',
-  endpoint: '/auth/refresh',
-  method: 'POST',
-  statusCode: 200,
-});
+
 
     return {
+
       success: true,
+
+      accessToken:
+        tokens.accessToken,
+
+      refreshToken:
+        tokens.refreshToken,
+
+    };
+
+  }
+
+
+
+
+
+  async logout(
+    userId: number,
+  ) {
+
+
+    await this.usersService.logout(
+      userId,
+    );
+
+
+    await this.auditService.log({
+
+      userId,
+
+      action: 'LOGOUT',
+
+      endpoint: '/auth/logout',
+
+      method: 'POST',
+
+      statusCode: 200,
+
+    });
+
+
+
+    return {
+
+      success: true,
+
       message:
-        'Token refreshed successfully',
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+        'Logged out successfully',
+
     };
+
   }
 
-  async logout(userId: number) {
-    if (!userId) {
-      throw new UnauthorizedException(
-        'Invalid user id',
-      );
-    }
 
-    await this.usersService.logout(userId);
 
-    await this.auditService.log({
-  userId,
-  action: 'LOGOUT',
-  endpoint: '/auth/logout',
-  method: 'POST',
-  statusCode: 200,
-});
 
-    return {
-      success: true,
-      message: 'Logged out successfully',
-    };
-  }
-
+  // IMPORTANT: public because AdminService uses it
   public generateTokens(
     user: TokenUser,
   ) {
+
+
     const payload: JwtPayload = {
+
       sub: user.id,
+
       email: user.email,
+
       role: user.role,
-      tokenVersion: user.tokenVersion,
+
+      tokenVersion:
+        user.tokenVersion ?? 0,
+
     };
+
+
+
+    const jwtSecret =
+      process.env.JWT_SECRET;
+
+
+    if (!jwtSecret) {
+
+      throw new Error(
+        'JWT_SECRET missing',
+      );
+
+    }
+
+
 
     return {
+
+
       accessToken:
-        this.jwtService.sign(payload, {
-          expiresIn: '15m',
-        }),
+        this.jwtService.sign(
+          payload,
+          {
+            secret: jwtSecret,
+            expiresIn: '15m',
+          },
+        ),
+
+
 
       refreshToken:
-        this.jwtService.sign(payload, {
-          expiresIn: '7d',
-        }),
+        this.jwtService.sign(
+          payload,
+          {
+            secret:
+              process.env.JWT_REFRESH_SECRET ||
+              jwtSecret,
+
+            expiresIn: '7d',
+
+          },
+        ),
+
     };
+
   }
+
 }

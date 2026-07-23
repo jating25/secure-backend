@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,28 +13,42 @@ export class UsersService {
     private readonly prisma: PrismaService,
   ) {}
 
-  
-
-  async create(data: Prisma.UserCreateInput) {
-    return this.prisma.user.create({
-      data,
-    });
+  async create(
+    data: Prisma.UserCreateInput,
+  ) {
+    try {
+      return await this.prisma.user.create({
+        data,
+      });
+    } catch (error) {
+      throw new InternalServerErrorException(
+        'Failed to create user',
+      );
+    }
   }
+
 
   async findByEmail(email: string) {
     return this.prisma.user.findUnique({
-      where: { email },
+      where: {
+        email: email.toLowerCase(),
+      },
     });
   }
+
 
   async findById(id: number) {
     return this.prisma.user.findUnique({
-      where: { id },
+      where: {
+        id,
+      },
     });
   }
 
+
   async findByIdOrThrow(id: number) {
-    const user = await this.findById(id);
+    const user =
+      await this.findById(id);
 
     if (!user) {
       throw new NotFoundException(
@@ -49,8 +64,6 @@ export class UsersService {
     userId: number,
     refreshToken: string | null,
   ) {
-    await this.findByIdOrThrow(userId);
-
     return this.prisma.user.update({
       where: {
         id: userId,
@@ -61,9 +74,8 @@ export class UsersService {
     });
   }
 
-  async logout(userId: number) {
-    await this.findByIdOrThrow(userId);
 
+  async logout(userId: number) {
     return this.prisma.user.update({
       where: {
         id: userId,
@@ -77,11 +89,10 @@ export class UsersService {
     });
   }
 
+
   async incrementFailedAttempts(
     userId: number,
   ) {
-    await this.findByIdOrThrow(userId);
-
     return this.prisma.user.update({
       where: {
         id: userId,
@@ -94,29 +105,29 @@ export class UsersService {
     });
   }
 
+
   async lockAccount(
     userId: number,
     minutes = 15,
   ) {
-    await this.findByIdOrThrow(userId);
-
     return this.prisma.user.update({
       where: {
         id: userId,
       },
       data: {
-        lockedUntil: new Date(
-          Date.now() + minutes * 60 * 1000,
-        ),
+        lockedUntil:
+          new Date(
+            Date.now() +
+            minutes * 60 * 1000,
+          ),
       },
     });
   }
 
+
   async resetFailedAttempts(
     userId: number,
   ) {
-    await this.findByIdOrThrow(userId);
-
     return this.prisma.user.update({
       where: {
         id: userId,
@@ -128,15 +139,18 @@ export class UsersService {
     });
   }
 
+
   async unlockAccount(userId: number) {
-    return this.resetFailedAttempts(userId);
+    return this.resetFailedAttempts(
+      userId,
+    );
   }
 
-  
 
   async countUsers() {
     return this.prisma.user.count();
   }
+
 
   async countAdmins() {
     return this.prisma.user.count({
@@ -146,6 +160,7 @@ export class UsersService {
     });
   }
 
+
   async countActiveUsers() {
     return this.prisma.user.count({
       where: {
@@ -154,6 +169,7 @@ export class UsersService {
     });
   }
 
+
   async countInactiveUsers() {
     return this.prisma.user.count({
       where: {
@@ -161,6 +177,7 @@ export class UsersService {
       },
     });
   }
+
 
   async countLockedUsers() {
     return this.prisma.user.count({
@@ -172,16 +189,19 @@ export class UsersService {
     });
   }
 
-  
 
   async getAllUsers(
     page = 1,
     limit = 10,
     search?: string,
   ) {
-    const skip = (page - 1) * limit;
+
+    const skip =
+      (page - 1) * limit;
+
 
     return this.prisma.user.findMany({
+
       skip,
       take: limit,
 
@@ -204,9 +224,11 @@ export class UsersService {
           }
         : undefined,
 
+
       orderBy: {
         createdAt: 'desc',
       },
+
 
       select: {
         id: true,
@@ -222,54 +244,50 @@ export class UsersService {
     });
   }
 
+
   async updateRole(
     userId: number,
     role: Role,
   ) {
-    await this.findByIdOrThrow(userId);
-
     return this.prisma.user.update({
-      where: {
-        id: userId,
+      where:{
+        id:userId,
       },
-      data: {
+      data:{
         role,
       },
     });
   }
 
-  async activateUser(userId: number) {
-    await this.findByIdOrThrow(userId);
 
+  async activateUser(userId:number){
     return this.prisma.user.update({
-      where: {
-        id: userId,
+      where:{
+        id:userId,
       },
-      data: {
-        isActive: true,
+      data:{
+        isActive:true,
       },
     });
   }
 
-  async deactivateUser(userId: number) {
-    await this.findByIdOrThrow(userId);
 
+  async deactivateUser(userId:number){
     return this.prisma.user.update({
-      where: {
-        id: userId,
+      where:{
+        id:userId,
       },
-      data: {
-        isActive: false,
+      data:{
+        isActive:false,
       },
     });
   }
 
-  async deleteUser(userId: number) {
-    await this.findByIdOrThrow(userId);
 
+  async deleteUser(userId:number){
     return this.prisma.user.delete({
-      where: {
-        id: userId,
+      where:{
+        id:userId,
       },
     });
   }

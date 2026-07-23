@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
 
 import { RequestStatus } from '@prisma/client';
@@ -23,15 +22,25 @@ export class RequestsService {
     userId: number,
     dto: CreateRequestDto,
   ) {
-    const request = await this.prisma.request.create({
-      data: {
-        title: dto.title,
-        description: dto.description,
-        createdBy: userId,
-      },
-    });
+    const request =
+      await this.prisma.request.create({
+        data: {
+          title: dto.title,
+          description: dto.description,
+          createdBy: userId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          createdBy: true,
+        },
+      });
 
-    await this.auditService.log({
+    void this.auditService.log({
       userId,
       action: 'CREATE_REQUEST',
       endpoint: '/requests',
@@ -42,35 +51,58 @@ export class RequestsService {
     return request;
   }
 
+
   async findAll(userId: number) {
     return this.prisma.request.findMany({
       where: {
         createdBy: userId,
       },
+
       orderBy: {
         createdAt: 'desc',
       },
+
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
   }
+
 
   async findOne(
     id: number,
     userId: number,
     role: string,
   ) {
+
     const request =
-      await this.prisma.request.findUnique({
-        where: { id },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
+      await this.prisma.request.findFirst({
+        where: {
+          id,
+
+          ...(role !== 'ADMIN'
+            ? {
+                createdBy: userId,
+              }
+            : {}),
+        },
+
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          createdBy: true,
+          createdAt: true,
+          updatedAt: true,
         },
       });
+
 
     if (!request) {
       throw new NotFoundException(
@@ -78,17 +110,11 @@ export class RequestsService {
       );
     }
 
-    if (
-      role !== 'ADMIN' &&
-      request.createdBy !== userId
-    ) {
-      throw new ForbiddenException(
-        'Access denied',
-      );
-    }
 
     return request;
   }
+
+
 
   async update(
     id: number,
@@ -96,18 +122,47 @@ export class RequestsService {
     userId: number,
     role: string,
   ) {
-    await this.findOne(id, userId, role);
+
+   const existing =
+  await this.findOne(
+    id,
+    userId,
+    role,
+  );
+
+
+    if (!existing) {
+      throw new NotFoundException(
+        'Request not found',
+      );
+    }
+
+
 
     const request =
       await this.prisma.request.update({
-        where: { id },
+        where: {
+          id,
+        },
+
         data: {
           title: dto.title,
           description: dto.description,
         },
+
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
 
-    await this.auditService.log({
+
+
+    void this.auditService.log({
       userId,
       action: 'UPDATE_REQUEST',
       endpoint: `/requests/${id}`,
@@ -115,21 +170,35 @@ export class RequestsService {
       statusCode: 200,
     });
 
+
     return request;
   }
+
+
+
 
   async remove(
     id: number,
     userId: number,
     role: string,
   ) {
-    await this.findOne(id, userId, role);
+
+    await this.findOne(
+      id,
+      userId,
+      role,
+    );
+
 
     await this.prisma.request.delete({
-      where: { id },
+      where: {
+        id,
+      },
     });
 
-    await this.auditService.log({
+
+
+    void this.auditService.log({
       userId,
       action: 'DELETE_REQUEST',
       endpoint: `/requests/${id}`,
@@ -137,37 +206,62 @@ export class RequestsService {
       statusCode: 200,
     });
 
+
+
     return {
       success: true,
-      message: 'Request deleted successfully',
+      message:
+        'Request deleted successfully',
     };
+
   }
 
+
+
+
   async findAllRequests() {
+
     return this.prisma.request.findMany({
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
+
       orderBy: {
         createdAt: 'desc',
       },
+
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        createdBy: true,
+      },
+
     });
+
   }
+
+
+
+
 
   async updateStatus(
     id: number,
     status: RequestStatus,
   ) {
+
     const request =
       await this.prisma.request.findUnique({
-        where: { id },
+        where: {
+          id,
+        },
+
+        select: {
+          id: true,
+          createdBy: true,
+        },
       });
+
 
     if (!request) {
       throw new NotFoundException(
@@ -175,22 +269,53 @@ export class RequestsService {
       );
     }
 
+
+
     const updatedRequest =
       await this.prisma.request.update({
-        where: { id },
+
+        where: {
+          id,
+        },
+
         data: {
           status,
         },
+
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+
       });
 
-    await this.auditService.log({
+
+
+    void this.auditService.log({
+
       userId: request.createdBy,
-      action: 'UPDATE_REQUEST_STATUS',
-      endpoint: `/requests/admin/${id}/status`,
-      method: 'PATCH',
+
+      action:
+        'UPDATE_REQUEST_STATUS',
+
+      endpoint:
+        `/requests/admin/${id}/status`,
+
+      method:
+        'PATCH',
+
       statusCode: 200,
+
     });
 
+
+
     return updatedRequest;
+
   }
+
 }

@@ -1,0 +1,2 @@
+-- Performance indexes already exist in database.
+-- This migration records the schema change without recreating indexes.

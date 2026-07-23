@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import compression from 'compression';
 
 import {
   SwaggerModule,
@@ -13,54 +14,28 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger:
+      process.env.NODE_ENV === 'production'
+        ? ['error', 'warn']
+        : ['log', 'error', 'warn'],
+  });
 
-  app.useGlobalFilters(new HttpExceptionFilter());
+  const server =
+    app.getHttpAdapter().getInstance();
 
-  app.getHttpAdapter().getInstance().disable('x-powered-by');
+  // Disable Express header
+  server.disable('x-powered-by');
 
+  // Trust reverse proxy (NGINX/Cloudflare/AWS ALB)
+  server.set('trust proxy', 1);
+
+  // Security
   app.use(
     helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: [
-            "'self'",
-            "'unsafe-inline'",
-          ],
-          styleSrc: [
-            "'self'",
-            "'unsafe-inline'",
-          ],
-          imgSrc: [
-            "'self'",
-            'data:',
-            'https:',
-          ],
-          fontSrc: [
-            "'self'",
-            'https:',
-            'data:',
-          ],
-          objectSrc: ["'none'"],
-          frameAncestors: ["'none'"],
-          upgradeInsecureRequests: [],
-        },
-      },
+      contentSecurityPolicy: false,
 
       crossOriginEmbedderPolicy: false,
-
-      crossOriginOpenerPolicy: {
-        policy: 'same-origin',
-      },
-
-      crossOriginResourcePolicy: {
-        policy: 'same-origin',
-      },
-
-      frameguard: {
-        action: 'deny',
-      },
 
       hsts: {
         maxAge: 31536000,
@@ -68,13 +43,23 @@ async function bootstrap() {
         preload: true,
       },
 
+      frameguard: {
+        action: 'deny',
+      },
+
       noSniff: true,
 
       referrerPolicy: {
         policy: 'no-referrer',
       },
+    }),
+  );
 
-      xPoweredBy: false,
+  // Compress API responses
+  app.use(
+    compression({
+      level: 6,
+      threshold: 1024,
     }),
   );
 
@@ -84,14 +69,18 @@ async function bootstrap() {
     origin:
       process.env.FRONTEND_URL ||
       'http://localhost:3001',
+
     credentials: true,
+
     methods: [
       'GET',
       'POST',
       'PUT',
       'PATCH',
       'DELETE',
+      'OPTIONS',
     ],
+
     allowedHeaders: [
       'Content-Type',
       'Authorization',
@@ -103,59 +92,87 @@ async function bootstrap() {
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: true,
-      forbidUnknownValues: true,
+
+      // Better performance
+      forbidUnknownValues: false,
+
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
 
-  const config = new DocumentBuilder()
-    .setTitle('Secure Backend API')
-    .setDescription(
-      'Professional NestJS Authentication & Authorization API',
-    )
-    .setVersion('1.0.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-      },
-      'JWT-auth',
-    )
-    .build();
-
-  const document =
-    SwaggerModule.createDocument(
-      app,
-      config,
-    );
-
-  SwaggerModule.setup(
-    'docs',
-    app,
-    document,
-    {
-      swaggerOptions: {
-        persistAuthorization: true,
-      },
-      customSiteTitle:
-        'Secure Backend API Docs',
-    },
+  app.useGlobalFilters(
+    new HttpExceptionFilter(),
   );
+
+  // Swagger only in development
+  if (
+    process.env.NODE_ENV !==
+    'production'
+  ) {
+    const config =
+      new DocumentBuilder()
+        .setTitle(
+          'Secure Backend API',
+        )
+        .setDescription(
+          'Professional NestJS Authentication & Authorization API',
+        )
+        .setVersion('1.0.0')
+        .addBearerAuth(
+          {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+          'JWT-auth',
+        )
+        .build();
+
+    const document =
+      SwaggerModule.createDocument(
+        app,
+        config,
+      );
+
+    SwaggerModule.setup(
+      'docs',
+      app,
+      document,
+      {
+        swaggerOptions: {
+          persistAuthorization: true,
+        },
+
+        customSiteTitle:
+          'Secure Backend API Docs',
+      },
+    );
+  }
 
   app.enableShutdownHooks();
 
   const port =
     Number(process.env.PORT) || 3000;
 
-  await app.listen(port);
-
-  console.log(
-    ` Backend running at http://localhost:${port}`,
+  await app.listen(
+    port,
+    '0.0.0.0',
   );
 
   console.log(
-    ` Swagger Docs: http://localhost:${port}/docs`,
+    `🚀 Backend running on http://0.0.0.0:${port}`,
   );
+
+  if (
+    process.env.NODE_ENV !==
+    'production'
+  ) {
+    console.log(
+      `📘 Swagger Docs: http://localhost:${port}/docs`,
+    );
+  }
 }
 
 bootstrap();

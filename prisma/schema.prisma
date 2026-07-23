@@ -20,60 +20,74 @@ enum RequestStatus {
 }
 
 model User {
-  id                  Int       @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  name                String
-  email               String    @unique
-  password            String
+  name     String
+  email    String @unique
+  password String
 
-  role                Role      @default(USER)
-  isActive            Boolean   @default(true)
+  role     Role    @default(USER)
+  isActive Boolean @default(true)
 
-  refreshToken        String?
+  refreshToken String?
 
   // Increment this to revoke all existing access tokens
-  tokenVersion        Int       @default(0)
+  tokenVersion Int @default(0)
 
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
 
   // Relations
-  logs                Log[]
-  requests            Request[]
+  logs     Log[]
+  requests Request[]
 
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([isActive])
 }
 
 model Request {
-  id          Int             @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   title       String
   description String
 
-  status      RequestStatus   @default(PENDING)
+  status RequestStatus @default(PENDING)
 
-  createdBy   Int
-  user        User            @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  createdBy Int
 
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdBy])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@index([createdBy, createdAt(sort: Desc)])
 }
 
 model Log {
-  id         Int       @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  userId     Int?
+  userId Int?
 
   action     String
   endpoint   String
   method     String
   statusCode Int
 
-  ip         String?
-  userAgent  String?
+  ip        String?
+  userAgent String?
 
-  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  createdAt  DateTime  @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@index([statusCode])
+  @@index([method])
 }
