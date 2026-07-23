@@ -18,6 +18,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 
+import { Throttle } from '@nestjs/throttler';
+
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -38,6 +40,7 @@ export class RequestsController {
   ) {}
 
   @Post()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({
     summary: 'Create Request',
   })
@@ -56,6 +59,7 @@ export class RequestsController {
   }
 
   @Get()
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   @ApiOperation({
     summary: 'Get My Requests',
   })
@@ -65,13 +69,11 @@ export class RequestsController {
     );
   }
 
-  // ===========================
-  // ADMIN ROUTES
-  // ===========================
-
+  
   @Get('admin/all')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({
     summary: 'Get All Requests',
   })
@@ -82,6 +84,7 @@ export class RequestsController {
   @Patch('admin/:id/status')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({
     summary: 'Update Request Status',
   })
@@ -95,11 +98,10 @@ export class RequestsController {
     );
   }
 
-  // ===========================
-  // USER ROUTES
-  // ===========================
+  
 
   @Get(':id')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   @ApiOperation({
     summary: 'Get Request By ID',
   })
@@ -115,6 +117,7 @@ export class RequestsController {
   }
 
   @Patch(':id')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({
     summary: 'Update Request',
   })
@@ -132,6 +135,7 @@ export class RequestsController {
   }
 
   @Delete(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({
     summary: 'Delete Request',
   })

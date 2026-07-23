@@ -17,24 +17,45 @@ import {
   ThrottlerModule,
 } from '@nestjs/throttler';
 
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
+
 import { PrismaModule } from './prisma/prisma.module';
+
 import { UsersModule } from './users/users.module';
+
 import { AuthModule } from './auth/auth.module';
+
 import { AdminModule } from './admin/admin.module';
+
 import { LogsModule } from './logs/logs.module';
+
 import { RequestsModule } from './requests/requests.module';
+
 import { HealthModule } from './health/health.module';
+
 import { MetricsModule } from './metrics/metrics.module';
 
+import { OtpModule } from './otp/otp.module';
+
+import { MailModule } from './mail/mail.module';
+
+
+
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+
 import { CacheInterceptor } from './common/interceptors/cache.interceptor';
 
+
+
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+
 import { RequestTimingMiddleware } from './common/middleware/request-timing.middleware';
+
 
 
 @Module({
@@ -52,27 +73,37 @@ import { RequestTimingMiddleware } from './common/middleware/request-timing.midd
     }),
 
 
+
     CacheModule.register({
 
       isGlobal: true,
 
-      ttl: 60000,
+      ttl:
+        Number(process.env.CACHE_TTL) || 60,
 
-      max: 1000,
+      max:
+        Number(process.env.CACHE_MAX_ITEMS) || 1000,
 
     }),
 
 
 
+
     ThrottlerModule.forRoot([
-  {
-    ttl:60000,
-    limit:
-      process.env.NODE_ENV === 'test'
-        ? 100000
-        : 1000,
-  },
-]),
+
+      {
+
+        ttl:
+          Number(process.env.THROTTLE_TTL) || 60000,
+
+
+        limit:
+          Number(process.env.THROTTLE_LIMIT) || 100,
+
+      },
+
+    ]),
+
 
 
 
@@ -92,7 +123,12 @@ import { RequestTimingMiddleware } from './common/middleware/request-timing.midd
 
     MetricsModule,
 
+    OtpModule,
+
+    MailModule,
+
   ],
+
 
 
 
@@ -101,6 +137,7 @@ import { RequestTimingMiddleware } from './common/middleware/request-timing.midd
     AppController,
 
   ],
+
 
 
 
@@ -150,7 +187,9 @@ import { RequestTimingMiddleware } from './common/middleware/request-timing.midd
 
   ],
 
+
 })
+
 
 export class AppModule implements NestModule {
 
@@ -176,5 +215,6 @@ export class AppModule implements NestModule {
 
 
   }
+
 
 }

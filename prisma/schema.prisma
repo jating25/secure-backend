@@ -22,26 +22,30 @@ enum RequestStatus {
 model User {
   id Int @id @default(autoincrement())
 
-  name     String
-  email    String @unique
+  name String
+
+  email String @unique
+
   password String
 
-  role     Role    @default(USER)
+  role Role @default(USER)
+
   isActive Boolean @default(true)
 
   refreshToken String?
 
-  // Increment this to revoke all existing access tokens
   tokenVersion Int @default(0)
 
-  failedLoginAttempts Int       @default(0)
-  lockedUntil         DateTime?
+  failedLoginAttempts Int @default(0)
 
-  // Relations
-  logs     Log[]
+  lockedUntil DateTime?
+
+  logs Log[]
+
   requests Request[]
 
   createdAt DateTime @default(now())
+
   updatedAt DateTime @updatedAt
 
   @@index([role])
@@ -51,7 +55,8 @@ model User {
 model Request {
   id Int @id @default(autoincrement())
 
-  title       String
+  title String
+
   description String
 
   status RequestStatus @default(PENDING)
@@ -61,6 +66,7 @@ model Request {
   user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
+
   updatedAt DateTime @updatedAt
 
   @@index([createdBy])
@@ -74,12 +80,16 @@ model Log {
 
   userId Int?
 
-  action     String
-  endpoint   String
-  method     String
+  action String
+
+  endpoint String
+
+  method String
+
   statusCode Int
 
-  ip        String?
+  ip String?
+
   userAgent String?
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -90,4 +100,28 @@ model Log {
   @@index([createdAt(sort: Desc)])
   @@index([statusCode])
   @@index([method])
+}
+
+model Otp {
+  id Int @id @default(autoincrement())
+
+  email String
+
+  otpHash String
+
+  expiresAt DateTime
+
+  attempts Int @default(0)
+
+  resendCount Int @default(0)
+
+  verified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([email, verified])
+  @@index([createdAt(sort: Desc)])
 }
